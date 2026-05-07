@@ -27,6 +27,19 @@ function collectAllContainerPaths(root) {
 }
 
 const THEMES = ['zebra-dark', 'zebra-light'];
+const STORAGE_KEY = 'zebra-json-text';
+const STORAGE_TS = 'zebra-json-ts';
+const STORAGE_MAX_BYTES = 4 * 1024 * 1024; // 4MB
+
+function timeAgo(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
 
 function readTheme() {
   try {
@@ -134,26 +147,39 @@ export default function App() {
     setTimeout(() => setToast(null), 1800);
   }, []);
 
-  const parseText = useCallback((text) => {
+  const parseText = useCallback((text, opts = {}) => {
     setRawText(text);
     if (!text.trim()) {
       setData(null);
       setRawSize(0);
       setParseMs(0);
       setError(null);
+      try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(STORAGE_TS); } catch {}
       return;
     }
     const t0 = performance.now();
     try {
       const obj = JSON.parse(text);
       const t1 = performance.now();
+      const size = new Blob([text]).size;
       setData(obj);
-      setRawSize(new Blob([text]).size);
+      setRawSize(size);
       setParseMs(t1 - t0);
       setExpanded(collectAllContainerPaths(obj));
       setError(null);
       setTab('tree');
-      showSuccess(`Parsed in ${(t1 - t0).toFixed(1)} ms`);
+      if (!opts.silent) showSuccess(`Parsed in ${(t1 - t0).toFixed(1)} ms`);
+      if (!opts.skipPersist) {
+        try {
+          if (size <= STORAGE_MAX_BYTES) {
+            localStorage.setItem(STORAGE_KEY, text);
+            localStorage.setItem(STORAGE_TS, String(Date.now()));
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(STORAGE_TS);
+          }
+        } catch {}
+      }
     } catch (e) {
       const m = e.message || 'Invalid JSON';
       const posMatch = m.match(/position (\d+)/);
@@ -169,6 +195,21 @@ export default function App() {
     }
   }, [showError, showSuccess]);
   parseTextRef.current = parseText;
+
+  // Restore last session on mount
+  useEffect(() => {
+    try {
+      const text = localStorage.getItem(STORAGE_KEY);
+      const ts = localStorage.getItem(STORAGE_TS);
+      if (!text || !text.trim()) return;
+      requestAnimationFrame(() => {
+        parseTextRef.current?.(text, { skipPersist: true, silent: true });
+        const label = ts ? `Restored · ${timeAgo(Date.now() - Number(ts))}` : 'Restored last session';
+        setToast(label);
+        setTimeout(() => setToast(null), 2200);
+      });
+    } catch {}
+  }, []);
 
   const pasteFromClipboard = useCallback(async () => {
     try {
@@ -244,6 +285,7 @@ export default function App() {
     setExpanded(new Set(['']));
     setSelectedPath(null);
     setTab('tree');
+    try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(STORAGE_TS); } catch {}
   }, []);
 
   const expandAll = useCallback(() => {
