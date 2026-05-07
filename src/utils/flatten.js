@@ -2,7 +2,7 @@ import { getType, isContainer, joinPath } from './types.js';
 
 const CLOSE_SUFFIX = '\x01__close';
 
-export function flattenTree(root, expanded) {
+export function flattenTree(root, expanded, keepSet = null) {
   const out = [];
   const stack = [{ kind: 'visit', value: root, path: '', key: null, depth: 0, isArrayItem: false }];
   while (stack.length) {
@@ -25,6 +25,7 @@ export function flattenTree(root, expanded) {
       continue;
     }
     const { value, path, key, depth, isArrayItem, isLastInParent } = task;
+    if (keepSet && !keepSet.has(path)) continue;
     const type = getType(value);
     const container = isContainer(type);
     const childCount = container

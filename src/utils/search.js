@@ -50,6 +50,17 @@ export function expandAncestors(matches, expanded) {
   return next;
 }
 
+// keepSet for filter mode: matches + all ancestors (root included).
+// Tree renders only paths in this set; ancestors stay as breadcrumbs.
+export function buildKeepSet(matches) {
+  const set = new Set(['']);
+  for (const m of matches) {
+    set.add(m);
+    for (const a of ancestorsOf(m)) set.add(a);
+  }
+  return set;
+}
+
 export function highlightText(text, query, isActive, caseSensitive = false) {
   if (!query || !text) return [{ text, mark: false }];
   const t = caseSensitive ? text : text.toLowerCase();

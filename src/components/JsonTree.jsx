@@ -12,6 +12,7 @@ export default function JsonTree({
   query,
   caseSensitive,
   matchSet,
+  keepSet,
   activePath,
   jumpTarget,
   flashPath,
@@ -19,7 +20,7 @@ export default function JsonTree({
   onCopyValue,
   onCopyPath
 }) {
-  const flat = useMemo(() => flattenTree(data, expanded), [data, expanded]);
+  const flat = useMemo(() => flattenTree(data, expanded, keepSet), [data, expanded, keepSet]);
   const listRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = React.useState({ w: 0, h: 0 });

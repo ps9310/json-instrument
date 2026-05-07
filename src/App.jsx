@@ -3,11 +3,13 @@ import JsonTree from './components/JsonTree.jsx';
 import SearchBar from './components/SearchBar.jsx';
 import DevTools from './components/DevTools.jsx';
 import RawView from './components/RawView.jsx';
-import { searchTree, expandAncestors } from './utils/search.js';
+import { searchTree, expandAncestors, buildKeepSet } from './utils/search.js';
 import { parseUserPath } from './utils/parsePath.js';
 import {
   ancestorsOf, getValueAtPath, isContainer, getType, joinPath, pathToJsonPath
 } from './utils/types.js';
+import { listHistory, pushHistory, removeHistory, clearHistory, getHistoryEntry } from './utils/history.js';
+import { buildShareUrl, readShareFromUrl, clearShareUrl } from './utils/share.js';
 
 function collectAllContainerPaths(root) {
   const out = new Set();
@@ -67,6 +69,7 @@ export default function App() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [mode, setMode] = useState('all');
+  const [filterMode, setFilterMode] = useState(false);
   const [matches, setMatches] = useState([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -75,6 +78,8 @@ export default function App() {
   const [flashPath, setFlashPath] = useState(null);
   const [flashTick, setFlashTick] = useState(0);
   const [toast, setToast] = useState(null);
+  const [history, setHistory] = useState(() => listHistory());
+  const [dragOver, setDragOver] = useState(false);
 
   // Debounce query
   useEffect(() => {
@@ -130,6 +135,11 @@ export default function App() {
   }, [debouncedQuery, caseSensitive, mode, data]);
 
   const matchSet = useMemo(() => new Set(matches), [matches]);
+  const keepSet = useMemo(() => {
+    if (!filterMode || !debouncedQuery) return null;
+    if (matches.length === 0) return new Set(['']);
+    return buildKeepSet(matches);
+  }, [filterMode, debouncedQuery, matches]);
   const activePath = matches.length > 0 ? matches[activeIdx] : null;
 
   const showToast = useCallback((msg) => {
@@ -180,6 +190,10 @@ export default function App() {
           }
         } catch {}
       }
+      if (!opts.skipHistory) {
+        pushHistory({ text, size });
+        setHistory(listHistory());
+      }
     } catch (e) {
       const m = e.message || 'Invalid JSON';
       const posMatch = m.match(/position (\d+)/);
@@ -196,20 +210,106 @@ export default function App() {
   }, [showError, showSuccess]);
   parseTextRef.current = parseText;
 
-  // Restore last session on mount
+  // Restore on mount: URL hash > localStorage
   useEffect(() => {
     try {
+      const shared = readShareFromUrl();
+      if (shared && shared.trim()) {
+        requestAnimationFrame(() => {
+          parseTextRef.current?.(shared, { skipPersist: true, skipHistory: true, silent: true });
+          clearShareUrl();
+          setToast('Loaded from share link');
+          setTimeout(() => setToast(null), 2200);
+        });
+        return;
+      }
       const text = localStorage.getItem(STORAGE_KEY);
       const ts = localStorage.getItem(STORAGE_TS);
       if (!text || !text.trim()) return;
       requestAnimationFrame(() => {
-        parseTextRef.current?.(text, { skipPersist: true, silent: true });
+        parseTextRef.current?.(text, { skipPersist: true, skipHistory: true, silent: true });
         const label = ts ? `Restored · ${timeAgo(Date.now() - Number(ts))}` : 'Restored last session';
         setToast(label);
         setTimeout(() => setToast(null), 2200);
       });
     } catch {}
   }, []);
+
+  // Drag-drop file anywhere
+  useEffect(() => {
+    let depth = 0;
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+      depth++;
+      setDragOver(true);
+    };
+    const onDragOver = (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDragLeave = () => {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragOver(false);
+    };
+    const onDrop = async (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+      e.preventDefault();
+      depth = 0;
+      setDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        parseTextRef.current?.(text);
+      } catch (err) {
+        showError('Failed to read file: ' + (err.message || ''));
+      }
+    };
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [showError]);
+
+  const loadHistoryEntry = useCallback((id) => {
+    const entry = getHistoryEntry(id);
+    if (!entry) return;
+    if (!entry.text) {
+      showError('History entry too large; text was not stored');
+      return;
+    }
+    parseText(entry.text, { skipHistory: true });
+  }, [parseText, showError]);
+
+  const removeHistoryEntry = useCallback((id) => {
+    removeHistory(id);
+    setHistory(listHistory());
+  }, []);
+
+  const clearHistoryAll = useCallback(() => {
+    clearHistory();
+    setHistory([]);
+    showToast('Cleared history');
+  }, [showToast]);
+
+  const copyShareLink = useCallback(async () => {
+    if (!rawText || !rawText.trim()) return;
+    try {
+      const url = buildShareUrl(rawText);
+      await navigator.clipboard.writeText(url);
+      showToast(`Share link copied · ${url.length} chars`);
+    } catch (e) {
+      if (e.code === 'TOO_LARGE') showError(e.message);
+      else showError('Share failed: ' + (e.message || ''));
+    }
+  }, [rawText, showError, showToast]);
 
   const pasteFromClipboard = useCallback(async () => {
     try {
@@ -381,6 +481,8 @@ export default function App() {
               setCaseSensitive={setCaseSensitive}
               mode={mode}
               setMode={setMode}
+              filterMode={filterMode}
+              setFilterMode={setFilterMode}
               searching={searching}
             />
           ) : (
@@ -411,6 +513,7 @@ export default function App() {
                 query={debouncedQuery}
                 caseSensitive={caseSensitive}
                 matchSet={matchSet}
+                keepSet={keepSet}
                 activePath={activePath}
                 jumpTarget={jumpTarget}
                 flashPath={flashPath}
@@ -440,7 +543,12 @@ export default function App() {
           onFormat={formatJson}
           onMinify={minifyJson}
           onCopy={copyAllJson}
+          onCopyShareLink={copyShareLink}
           onClear={clearAll}
+          history={history}
+          onLoadHistory={loadHistoryEntry}
+          onRemoveHistory={removeHistoryEntry}
+          onClearHistory={clearHistoryAll}
           onExpandAll={expandAll}
           onCollapseAll={collapseAll}
           onDownload={downloadJson}
@@ -448,6 +556,15 @@ export default function App() {
       </div>
 
       {toast && <div className="toast">{toast}</div>}
+      {dragOver && (
+        <div className="drop-overlay">
+          <div className="drop-frame">
+            <div className="drop-glyph">⤓</div>
+            <div className="drop-title">Drop JSON file</div>
+            <div className="drop-hint">release to parse</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,13 +27,19 @@ export default function DevTools({
   onFormat,
   onMinify,
   onCopy,
+  onCopyShareLink,
   onClear,
   onExpandAll,
   onCollapseAll,
-  onDownload
+  onDownload,
+  history,
+  onLoadHistory,
+  onRemoveHistory,
+  onClearHistory
 }) {
   const stats = useMemo(() => (data == null ? null : computeStats(data)), [data]);
   const [pathInput, setPathInput] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const selectedValue = selectedPath != null ? getValueAtPath(data, selectedPath) : undefined;
 
@@ -125,6 +131,7 @@ export default function DevTools({
           <button className="btn" onClick={() => onCopy(false)} disabled={data == null} title="Copy minified JSON to clipboard">⎘ Copy Min</button>
           <button className="btn" onClick={() => onCopy(true)} disabled={data == null} title="Copy pretty JSON to clipboard">⎘ Copy</button>
           <button className="btn phosphor" onClick={onDownload} disabled={data == null}>↓ Download</button>
+          <button className="btn" onClick={onCopyShareLink} disabled={data == null} title="Copy URL with embedded JSON (small payloads only)">⇪ Share Link</button>
         </div>
       </div>
 
@@ -221,6 +228,53 @@ export default function DevTools({
         </div>
       )}
 
+      {history && history.length > 0 && (
+        <div className={`panel-section collapsible${historyOpen ? ' open' : ''}`}>
+          <button
+            className="head head-toggle"
+            onClick={() => setHistoryOpen(v => !v)}
+            aria-expanded={historyOpen}
+          >
+            <h3>
+              <span className="caret">{historyOpen ? '▾' : '▸'}</span>
+              · History
+            </h3>
+            <span className="num">{String(history.length).padStart(2, '0')}</span>
+          </button>
+          {historyOpen && (
+            <>
+              <div className="history-list">
+                {history.map((h) => (
+                  <div key={h.id} className="history-row">
+                    <button
+                      className="history-load"
+                      onClick={() => onLoadHistory(h.id)}
+                      disabled={!h.text}
+                      title={h.text ? 'Load this payload' : 'Stored as metadata only — text was too large'}
+                    >
+                      <span className="history-meta">
+                        <span className="ts">{relTime(h.ts)}</span>
+                        <span className="size">{formatBytes(h.size)}</span>
+                        {!h.text && <span className="meta-tag">meta</span>}
+                      </span>
+                      <span className="preview">{h.preview || '—'}</span>
+                    </button>
+                    <button
+                      className="btn xs danger history-remove"
+                      onClick={() => onRemoveHistory(h.id)}
+                      title="Remove"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, textAlign: 'right' }}>
+                <button className="btn xs danger" onClick={onClearHistory}>Clear all</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="foot-help">
         <span className="kbd">⌘F</span> search
         <span className="kbd">↵</span> next
@@ -229,6 +283,18 @@ export default function DevTools({
       </div>
     </div>
   );
+}
+
+function relTime(ts) {
+  const ms = Date.now() - ts;
+  const s = Math.floor(ms / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h';
+  return Math.floor(h / 24) + 'd';
 }
 
 function safeStringify(v, indent, maxLen) {

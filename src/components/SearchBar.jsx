@@ -11,6 +11,8 @@ export default function SearchBar({
   setCaseSensitive,
   mode,
   setMode,
+  filterMode,
+  setFilterMode,
   searching
 }) {
   const ref = React.useRef(null);
@@ -59,6 +61,12 @@ export default function SearchBar({
         title="Case sensitive"
         style={{ height: 28 }}
       >Aa</button>
+      <button
+        className={`btn ${filterMode ? 'primary' : 'ghost'}`}
+        onClick={() => setFilterMode(v => !v)}
+        title="Filter — collapse tree to matches only"
+        style={{ height: 28 }}
+      >▽ Filter</button>
       <button className="btn ghost" onClick={onPrev} disabled={!matchCount} title="Previous (Shift+Enter)" style={{ height: 28 }}>↑</button>
       <button className="btn ghost" onClick={onNext} disabled={!matchCount} title="Next (Enter)" style={{ height: 28 }}>↓</button>
       <span className={`count${searching ? ' searching' : ''}`}>
