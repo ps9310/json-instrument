@@ -26,6 +26,7 @@ export default function DevTools({
   onPaste,
   onFormat,
   onMinify,
+  onCopy,
   onClear,
   onExpandAll,
   onCollapseAll,
@@ -121,6 +122,8 @@ export default function DevTools({
         <div className="btn-row">
           <button className="btn" onClick={onFormat} disabled={data == null}>Pretty</button>
           <button className="btn" onClick={onMinify} disabled={data == null}>Minify</button>
+          <button className="btn" onClick={() => onCopy(false)} disabled={data == null} title="Copy minified JSON to clipboard">⎘ Copy Min</button>
+          <button className="btn" onClick={() => onCopy(true)} disabled={data == null} title="Copy pretty JSON to clipboard">⎘ Copy</button>
           <button className="btn phosphor" onClick={onDownload} disabled={data == null}>↓ Download</button>
         </div>
       </div>

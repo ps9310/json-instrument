@@ -210,6 +210,17 @@ export default function App() {
     showSuccess('Minified');
   }, [data, showSuccess]);
 
+  const copyAllJson = useCallback(async (pretty = false) => {
+    if (data == null) return;
+    const text = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`Copied ${pretty ? 'pretty' : 'minified'} · ${text.length.toLocaleString()} chars`);
+    } catch (e) {
+      showError('Clipboard write denied');
+    }
+  }, [data, showError, showToast]);
+
   const downloadJson = useCallback(() => {
     if (data == null) return;
     const text = JSON.stringify(data, null, 2);
@@ -386,6 +397,7 @@ export default function App() {
           onPaste={pasteFromClipboard}
           onFormat={formatJson}
           onMinify={minifyJson}
+          onCopy={copyAllJson}
           onClear={clearAll}
           onExpandAll={expandAll}
           onCollapseAll={collapseAll}
